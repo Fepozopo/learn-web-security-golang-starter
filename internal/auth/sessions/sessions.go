@@ -49,11 +49,13 @@ func HasRecentAuthentication(current accounts.CurrentSession, now time.Time) boo
 	return !authenticatedAt.After(now) && !authenticatedAt.Before(now.Add(-recentAuthenticationWindow))
 }
 
+// SetCookie writes the session cookie with the same expiration as the server-side session.
 func SetCookie(responseWriter http.ResponseWriter, session accounts.Session) {
 	http.SetCookie(responseWriter, &http.Cookie{
-		Name:  CookieName,
-		Value: session.Token,
-		Path:  "/",
+		Name:    CookieName,
+		Value:   session.Token,
+		Path:    "/",
+		Expires: session.ExpiresAt,
 	})
 }
 
