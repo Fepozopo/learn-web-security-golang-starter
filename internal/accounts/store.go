@@ -180,6 +180,7 @@ func (store *Store) CreateSession(ctx context.Context, userID int64) (Session, e
 	}, nil
 }
 
+// CurrentSession returns the active session and user for token, or found=false when the token is missing, expired, or revoked.
 func (store *Store) CurrentSession(ctx context.Context, token string) (CurrentSession, bool, error) {
 	if token == "" {
 		return CurrentSession{}, false, nil
@@ -192,7 +193,7 @@ func (store *Store) CurrentSession(ctx context.Context, token string) (CurrentSe
 		return CurrentSession{}, false, fmt.Errorf("find session: %w", err)
 	}
 	expiresAt, err := time.Parse(time.RFC3339, row.ExpiresAt)
-	if err != nil || !store.now().Before(expiresAt) {
+	if row.RevokedAt != nil || err != nil || !store.now().Before(expiresAt) {
 		return CurrentSession{}, false, nil
 	}
 	user, found, err := store.FindUserByID(ctx, row.UserID)

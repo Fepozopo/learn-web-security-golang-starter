@@ -232,7 +232,20 @@ func parseForm(_ int64, renderer *templates.Renderer) middleware {
 	}
 }
 
+// Logout revokes the current server-side session, clears authentication cookies, and redirects to the home page.
 func (handler *authHandler) Logout(responseWriter http.ResponseWriter, request *http.Request) {
+	currentSession, found, err := sessions.Current(request, handler.accounts)
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+	if found {
+		if err := handler.accounts.RevokeSession(request.Context(), currentSession.Session.Token); err != nil {
+			handler.internalError(responseWriter, request, err)
+			return
+		}
+	}
+
 	challengeToken := totpLoginChallengeToken(request)
 	if err := handler.mfa.DeleteChallenge(request.Context(), challengeToken); err != nil {
 		handler.internalError(responseWriter, request, err)
