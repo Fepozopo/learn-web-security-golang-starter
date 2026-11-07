@@ -94,7 +94,21 @@ func (handler *Handler) Products(responseWriter http.ResponseWriter, request *ht
 	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"products": products})
 }
 
+// WarehouseOrders returns warehouse orders to clients with an active orders:read API key.
 func (handler *Handler) WarehouseOrders(responseWriter http.ResponseWriter, request *http.Request) {
+	key, found, err := handler.apiStore.FindKey(request.Context(), request.Header.Get("X-API-Key"))
+	if err != nil {
+		handler.internalError(responseWriter, request, err)
+		return
+	}
+	if !found {
+		httpx.RespondWithJSON(responseWriter, http.StatusUnauthorized, map[string]string{"error": "Invalid or missing API key"})
+		return
+	}
+	if key.Scope != "orders:read" {
+		httpx.RespondWithJSON(responseWriter, http.StatusForbidden, map[string]string{"error": "API key lacks orders:read scope"})
+		return
+	}
 	orders, err := handler.orderStore.ListAll(request.Context())
 	if err != nil {
 		handler.internalError(responseWriter, request, err)
