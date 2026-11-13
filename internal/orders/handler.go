@@ -57,6 +57,7 @@ func (handler *Handler) List(responseWriter http.ResponseWriter, request *http.R
 	}
 }
 
+// Detail renders an authenticated user's order, or returns 404 if it is unavailable to them.
 func (handler *Handler) Detail(responseWriter http.ResponseWriter, request *http.Request) {
 	current, ok := handler.requireAuth(responseWriter, request)
 	if !ok {
@@ -72,7 +73,7 @@ func (handler *Handler) Detail(responseWriter http.ResponseWriter, request *http
 		handler.internalError(responseWriter, request, err)
 		return
 	}
-	if !found {
+	if !found || order.UserID != current.User.ID {
 		handler.orderNotFound(responseWriter)
 		return
 	}
