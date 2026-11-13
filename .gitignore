@@ -8,3 +8,4 @@ data/bulk-tax-documents/
 .env
 .env.local
 .env.*.local
+.codebase-memory/
