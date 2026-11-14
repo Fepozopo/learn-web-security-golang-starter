@@ -54,8 +54,9 @@ func (handler *Handler) AccountOrders(responseWriter http.ResponseWriter, reques
 	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"orders": orders})
 }
 
+// Order returns an authenticated user's order and its items, or a 404 if it is unavailable to them.
 func (handler *Handler) Order(responseWriter http.ResponseWriter, request *http.Request) {
-	_, ok := handler.requireAuthentication(responseWriter, request)
+	current, ok := handler.requireAuthentication(responseWriter, request)
 	if !ok {
 		return
 	}
@@ -69,7 +70,7 @@ func (handler *Handler) Order(responseWriter http.ResponseWriter, request *http.
 		handler.internalError(responseWriter, request, err)
 		return
 	}
-	if !found {
+	if !found || order.UserID != current.User.ID {
 		httpx.RespondWithJSON(responseWriter, http.StatusNotFound, map[string]string{"error": "Order not found"})
 		return
 	}
