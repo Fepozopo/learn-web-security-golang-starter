@@ -47,6 +47,8 @@ type plannedArchiveEntry struct {
 	document    ExtractedTaxDocument
 }
 
+// ExtractTaxDocumentArchive validates and extracts ZIP contents into a new import directory.
+// It returns the extracted documents or an error without writing unsafe archives.
 func ExtractTaxDocumentArchive(encryptionKeyring Keyring, contents []byte, extractionDirectory string) (ExtractedTaxDocumentArchive, error) {
 	archiveReader, err := zip.NewReader(bytes.NewReader(contents), int64(len(contents)))
 	if err != nil {
@@ -68,6 +70,10 @@ func ExtractTaxDocumentArchive(encryptionKeyring Keyring, contents []byte, extra
 	plannedEntries := make([]plannedArchiveEntry, 0, len(archiveReader.File))
 	for _, entry := range archiveReader.File {
 		entryDestination := filepath.Join(importDirectory, entry.Name)
+		if filepath.IsAbs(entry.Name) || strings.Contains(entry.Name, `\`) ||
+			!isInsideDirectory(importDirectory, entryDestination) || entry.Mode()&os.ModeSymlink != 0 {
+			return ExtractedTaxDocumentArchive{}, &ArchiveImportError{Message: "Archive contains an unsafe entry.", StatusCode: 400}
+		}
 		if isIgnoredArchiveEntry(entry.Name) {
 			continue
 		}
@@ -139,6 +145,13 @@ func ExtractTaxDocumentArchive(encryptionKeyring Keyring, contents []byte, extra
 		}
 	}
 	return archive, nil
+}
+
+// isInsideDirectory reports whether candidatePath is strictly below directory.
+func isInsideDirectory(directory, candidatePath string) bool {
+	relativePath, err := filepath.Rel(directory, candidatePath)
+	return err == nil && relativePath != "." && relativePath != ".." &&
+		!filepath.IsAbs(relativePath) && !strings.HasPrefix(relativePath, ".."+string(filepath.Separator))
 }
 
 func isIgnoredArchiveEntry(entryName string) bool {
