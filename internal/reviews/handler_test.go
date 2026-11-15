@@ -17,6 +17,30 @@ import (
 	"github.com/bootdotdev/learn-web-security/internal/templates"
 )
 
+// TestParseBody checks trimming and the review length boundary in Unicode code points.
+func TestParseBody(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input string
+		want  string
+		valid bool
+	}{
+		{name: "empty", input: "", want: "", valid: false},
+		{name: "whitespace only", input: " \t\u2003\n", want: "", valid: false},
+		{name: "trim outer whitespace", input: " \tHello  world\n\u2003", want: "Hello  world", valid: true},
+		{name: "one code point", input: "界", want: "界", valid: true},
+		{name: "limit after trimming", input: " " + strings.Repeat("界", 1000) + " ", want: strings.Repeat("界", 1000), valid: true},
+		{name: "over limit", input: strings.Repeat("界", 1001), want: strings.Repeat("界", 1001), valid: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, valid := parseBody(tc.input)
+			if got != tc.want || valid != tc.valid {
+				t.Errorf("parseBody(%q) = (%q, %t); want (%q, %t)", tc.input, got, valid, tc.want, tc.valid)
+			}
+		})
+	}
+}
+
 // TestReviewManagementOwnership checks access and persisted changes for each management handler.
 func TestReviewManagementOwnership(t *testing.T) {
 	for _, action := range []string{"edit", "update", "delete"} {

@@ -3,6 +3,8 @@ package reviews
 import (
 	"net/http"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/bootdotdev/learn-web-security/internal/accounts"
 	"github.com/bootdotdev/learn-web-security/internal/auth/sessions"
@@ -233,6 +235,8 @@ func parseRating(value string) (int64, bool) {
 	return rating, valid && rating >= 1 && rating <= 5
 }
 
+// parseBody trims value and reports whether it contains 1 to 1,000 Unicode code points.
 func parseBody(value string) (string, bool) {
-	return value, value != ""
+	value = strings.TrimSpace(value)
+	return value, value != "" && utf8.RuneCountInString(value) <= 1000
 }
