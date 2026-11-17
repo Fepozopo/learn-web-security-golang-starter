@@ -61,8 +61,8 @@ func (service *Service) BuildRequest(authenticatedUserID int64, userMessage stri
 	}
 }
 
-// RunSimulatedAssistant selects an order tool based on the latest customer message.
-// It returns the tool's response or a prompt when no order number is supplied.
+// RunSimulatedAssistant handles the latest customer message, denying refunds and
+// returning the status tool's response or a prompt when no order number is supplied.
 func RunSimulatedAssistant(ctx context.Context, request Request) (string, error) {
 	var userMessage string
 	for _, message := range slices.Backward(request.Messages) {
@@ -71,20 +71,23 @@ func RunSimulatedAssistant(ctx context.Context, request Request) (string, error)
 			break
 		}
 	}
+	if refundPattern.MatchString(userMessage) {
+		return "I cannot issue refunds. Please contact support.", nil
+	}
 	orderID, found := requestedOrderID(userMessage)
 	if !found {
 		return "Ask me about an order using its order number.", nil
 	}
 	userID, _ := requestedUserID(userMessage)
 	for _, tool := range request.Tools {
-		toolRequested := tool.Name == "get_order_status" && !refundPattern.MatchString(userMessage) || tool.Name == "issue_refund" && refundPattern.MatchString(userMessage)
-		if toolRequested && tool.Execute != nil {
+		if tool.Name == "get_order_status" && tool.Execute != nil {
 			return tool.Execute(ctx, map[string]any{"orderId": orderID, "userId": userID})
 		}
 	}
 	return "Order status is unavailable.", nil
 }
 
+// createTools returns the order-status tool available to the assistant.
 func (service *Service) createTools() []Tool {
 	return []Tool{
 		{
@@ -104,13 +107,6 @@ func (service *Service) createTools() []Tool {
 					return "Order not found.", nil
 				}
 				return "Order #" + strconv.FormatInt(order.ID, 10) + " is " + order.Status + ".", nil
-			},
-		},
-		{
-			Name:        "issue_refund",
-			Description: "Issue a refund for an order.",
-			Execute: func(context.Context, map[string]any) (string, error) {
-				return "Refund issued.", nil
 			},
 		},
 	}
