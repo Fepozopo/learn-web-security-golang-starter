@@ -52,7 +52,7 @@ func TestExtractTaxDocumentArchiveRejectsUnsafeEntries(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var contents bytes.Buffer
 			writer := zip.NewWriter(&contents)
-			for _, header := range []*zip.FileHeader{{Name: "valid.txt"}, {Name: tt.entry}} {
+			for _, header := range []*zip.FileHeader{{Name: "valid.pdf"}, {Name: tt.entry}} {
 				if header.Name == tt.entry {
 					header.SetMode(tt.mode)
 				}
@@ -60,7 +60,7 @@ func TestExtractTaxDocumentArchiveRejectsUnsafeEntries(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err := entry.Write([]byte("contents")); err != nil {
+				if _, err := entry.Write([]byte("%PDF-contents")); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -84,6 +84,37 @@ func TestExtractTaxDocumentArchiveRejectsUnsafeEntries(t *testing.T) {
 	}
 }
 
+// TestExtractTaxDocumentArchiveRejectsUnsupportedDocument checks that validation precedes all writes.
+func TestExtractTaxDocumentArchiveRejectsUnsupportedDocument(t *testing.T) {
+	var contents bytes.Buffer
+	writer := zip.NewWriter(&contents)
+	for _, item := range []struct{ name, body string }{
+		{"valid.pdf", "%PDF-valid"},
+		{"invalid.pdf", "not a PDF"},
+	} {
+		entry, err := writer.Create(item.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := entry.Write([]byte(item.body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	_, err := ExtractTaxDocumentArchive(nil, contents.Bytes(), directory)
+	var archiveErr *ArchiveImportError
+	if !errors.As(err, &archiveErr) || archiveErr.StatusCode != 400 || archiveErr.Message != "Archive contains an unsupported document type." {
+		t.Fatalf("unsupported document: error = %v, want unsupported document ArchiveImportError with status 400", err)
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil || len(entries) != 0 {
+		t.Errorf("unsupported document: directory entries = %v, error = %v; want no entries and no error", entries, err)
+	}
+}
+
 // TestExtractTaxDocumentArchiveAcceptsNestedEntry checks that a safe document is extracted.
 func TestExtractTaxDocumentArchiveAcceptsNestedEntry(t *testing.T) {
 	var contents bytes.Buffer
@@ -92,7 +123,7 @@ func TestExtractTaxDocumentArchiveAcceptsNestedEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := entry.Write([]byte("document")); err != nil {
+	if _, err := entry.Write([]byte("%PDF-document")); err != nil {
 		t.Fatal(err)
 	}
 	if err := writer.Close(); err != nil {
@@ -105,9 +136,12 @@ func TestExtractTaxDocumentArchiveAcceptsNestedEntry(t *testing.T) {
 	if len(archive.Documents) != 1 {
 		t.Fatalf("got %d documents, want 1", len(archive.Documents))
 	}
+	if got := archive.Documents[0].ContentType; got != "application/pdf" {
+		t.Errorf("document.txt content type = %q, want application/pdf", got)
+	}
 	path := filepath.Join(archive.ImportDirectory, "nested", "document.txt")
 	got, err := os.ReadFile(path)
-	if err != nil || string(got) != "document" {
-		t.Errorf("read %q: got %q and error %v, want %q and no error", path, got, err, "document")
+	if err != nil || string(got) != "%PDF-document" {
+		t.Errorf("read %q: got %q and error %v, want %q and no error", path, got, err, "%PDF-document")
 	}
 }
