@@ -9,6 +9,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -35,6 +36,36 @@ func contentTypeOptions(next http.Handler) http.Handler {
 		responseWriter.Header().Set("X-Content-Type-Options", "nosniff")
 		next.ServeHTTP(responseWriter, request)
 	})
+}
+
+// validateSource permits POST requests only when their Origin, or Referer when
+// Origin is absent, exactly matches appOrigin. Rejections use renderer's error page.
+func validateSource(appOrigin string, renderer *templates.Renderer) middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+			if request.Method != http.MethodPost {
+				next.ServeHTTP(responseWriter, request)
+				return
+			}
+
+			origins, hasOrigin := request.Header[http.CanonicalHeaderKey("Origin")]
+			trusted := hasOrigin && len(origins) == 1 && origins[0] != "" && origins[0] == appOrigin
+			if !hasOrigin {
+				referers := request.Header.Values("Referer")
+				if len(referers) == 1 {
+					referer, err := url.Parse(referers[0])
+					trusted = err == nil && referer.Scheme != "" && referer.Host != "" && referer.User == nil && referer.Fragment == "" && referer.Scheme+"://"+referer.Host == appOrigin
+				}
+			}
+			if trusted {
+				next.ServeHTTP(responseWriter, request)
+				return
+			}
+			if err := httpx.RespondWithErrorPage(responseWriter, renderer, http.StatusForbidden, "Forbidden", "Request source is not trusted."); err != nil {
+				http.Error(responseWriter, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			}
+		})
+	}
 }
 
 func permissiveCORS(next http.Handler) http.Handler {
