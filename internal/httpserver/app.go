@@ -244,8 +244,6 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 	handler := applyMiddleware(
 		mainMux,
 		securityHeaders,
-		cspNonce,
-		contentSecurityPolicy,
 		recoverPanics(logger, renderer),
 	)
 	return &Application{Handler: handler, publicRoot: publicRoot}, nil
@@ -255,6 +253,7 @@ func (application *Application) Close() error {
 	return application.publicRoot.Close()
 }
 
+// newStaticHandler serves files from publicRoot, allowing the sandboxed widget to load its assets.
 func newStaticHandler(publicRoot *os.Root) http.Handler {
 	fileServer := http.FileServerFS(publicRoot.FS())
 	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
@@ -263,6 +262,10 @@ func newStaticHandler(publicRoot *os.Root) http.Handler {
 		if err != nil || fileInfo.IsDir() {
 			http.NotFound(responseWriter, request)
 			return
+		}
+		// The sandboxed widget has an opaque origin, even when hosted by this server.
+		if request.URL.Path == "/shipping-widget.css" || request.URL.Path == "/shipping-widget.js" {
+			responseWriter.Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
 		}
 		fileServer.ServeHTTP(responseWriter, request)
 	})

@@ -1,8 +1,10 @@
 package httpserver
 
 import (
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -10,20 +12,39 @@ import (
 	"github.com/bootdotdev/learn-web-security/internal/templates"
 )
 
-// TestSecurityHeaders checks the global headers on successful and error responses.
+// TestSecurityHeaders checks the baseline, nonce propagation, and response forwarding.
 func TestSecurityHeaders(t *testing.T) {
+	var previousNonce string
 	for _, status := range []int{http.StatusNoContent, http.StatusForbidden, http.StatusInternalServerError} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
-			handler := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			var nonce string
+			handler := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				nonce = httpx.CSPNonce(r.Context())
 				w.WriteHeader(status)
 			}))
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
-			if got := response.Result().Header.Get("Referrer-Policy"); got != "strict-origin-when-cross-origin" {
-				t.Errorf("status %d: Referrer-Policy = %q; want %q", status, got, "strict-origin-when-cross-origin")
+			decoded, err := base64.StdEncoding.DecodeString(nonce)
+			if err != nil || len(decoded) != 16 || nonce == previousNonce {
+				t.Errorf("status %d: nonce = %q, decoded length = %d, error = %v; want a fresh base64-encoded 16-byte nonce", status, nonce, len(decoded), err)
 			}
-			if got := response.Result().Header.Get("X-Content-Type-Options"); got != "nosniff" {
-				t.Errorf("status %d: X-Content-Type-Options = %q; want %q", status, got, "nosniff")
+			previousNonce = nonce
+			for header, want := range map[string]string{
+				"Content-Security-Policy":           "default-src 'self'; script-src 'self' 'nonce-" + nonce + "'; style-src 'self'; img-src 'self' data:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
+				"Referrer-Policy":                   "strict-origin-when-cross-origin",
+				"X-Content-Type-Options":            "nosniff",
+				"X-Frame-Options":                   "SAMEORIGIN",
+				"Cross-Origin-Opener-Policy":        "same-origin",
+				"Cross-Origin-Resource-Policy":      "same-origin",
+				"Origin-Agent-Cluster":              "?1",
+				"X-DNS-Prefetch-Control":            "off",
+				"X-Download-Options":                "noopen",
+				"X-Permitted-Cross-Domain-Policies": "none",
+				"X-XSS-Protection":                  "0",
+			} {
+				if got := response.Result().Header.Get(header); got != want {
+					t.Errorf("status %d: %s = %q; want %q", status, header, got, want)
+				}
 			}
 			if response.Code != status {
 				t.Errorf("status = %d; want %d", response.Code, status)
@@ -32,24 +53,35 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 }
 
-// TestContentSecurityPolicy checks security headers, the request nonce, and response forwarding.
-func TestContentSecurityPolicy(t *testing.T) {
-	const want = "default-src 'self'; script-src 'self' 'nonce-dGVzdC1ub25jZQ=='; style-src 'self'; img-src 'self' data:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
-	handler := contentSecurityPolicy(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request = request.WithContext(httpx.WithCSPNonce(request.Context(), "dGVzdC1ub25jZQ=="))
-	handler.ServeHTTP(response, request)
-	if got := response.Result().Header.Get("Content-Security-Policy"); got != want {
-		t.Errorf("Content-Security-Policy = %q; want %q", got, want)
+// TestStaticResourcePolicy verifies that only widget assets allow cross-origin loading.
+func TestStaticResourcePolicy(t *testing.T) {
+	root, err := os.OpenRoot("../../web/public")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := response.Result().Header.Get("X-Frame-Options"); got != "SAMEORIGIN" {
-		t.Errorf("X-Frame-Options = %q; want %q", got, "SAMEORIGIN")
-	}
-	if response.Code != http.StatusNoContent {
-		t.Errorf("status = %d; want %d", response.Code, http.StatusNoContent)
+	t.Cleanup(func() { _ = root.Close() })
+	handler := securityHeaders(newStaticHandler(root))
+	for _, tc := range []struct {
+		method, path, policy string
+		status               int
+	}{
+		{http.MethodGet, "/shipping-widget.css", "cross-origin", http.StatusOK},
+		{http.MethodHead, "/shipping-widget.js", "cross-origin", http.StatusOK},
+		{http.MethodGet, "/shipping-widget.js", "cross-origin", http.StatusOK},
+		{http.MethodGet, "/shipping-widget.html", "same-origin", http.StatusOK},
+		{http.MethodGet, "/styles.css", "same-origin", http.StatusOK},
+		{http.MethodGet, "/missing.css", "same-origin", http.StatusNotFound},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(tc.method, tc.path, nil))
+			if response.Code != tc.status {
+				t.Errorf("%s %s: status = %d; want %d", tc.method, tc.path, response.Code, tc.status)
+			}
+			if got := response.Header().Get("Cross-Origin-Resource-Policy"); got != tc.policy {
+				t.Errorf("%s %s: Cross-Origin-Resource-Policy = %q; want %q", tc.method, tc.path, got, tc.policy)
+			}
+		})
 	}
 }
 

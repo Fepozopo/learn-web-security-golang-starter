@@ -30,11 +30,29 @@ func applyMiddleware(handler http.Handler, middlewareChain ...middleware) http.H
 	return handler
 }
 
-// securityHeaders prevents MIME sniffing and limits cross-origin referrer information.
+// securityHeaders sets browser security policies and provides a fresh CSP nonce to the next handler.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
-		responseWriter.Header().Set("X-Content-Type-Options", "nosniff")
-		responseWriter.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		headers := responseWriter.Header()
+		headers.Set("X-Content-Type-Options", "nosniff")
+		headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		headers.Set("X-Frame-Options", "SAMEORIGIN")
+		headers.Set("Cross-Origin-Opener-Policy", "same-origin")
+		headers.Set("Cross-Origin-Resource-Policy", "same-origin")
+		headers.Set("Origin-Agent-Cluster", "?1")
+		headers.Set("X-DNS-Prefetch-Control", "off")
+		headers.Set("X-Download-Options", "noopen")
+		headers.Set("X-Permitted-Cross-Domain-Policies", "none")
+		headers.Set("X-XSS-Protection", "0")
+
+		nonceBytes := make([]byte, 16)
+		if _, err := rand.Read(nonceBytes); err != nil {
+			http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		nonce := base64.StdEncoding.EncodeToString(nonceBytes)
+		headers.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'nonce-"+nonce+"'; style-src 'self'; img-src 'self' data:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'")
+		request = request.WithContext(httpx.WithCSPNonce(request.Context(), nonce))
 		next.ServeHTTP(responseWriter, request)
 	})
 }
@@ -67,29 +85,6 @@ func validateSource(appOrigin string, renderer *templates.Renderer) middleware {
 			}
 		})
 	}
-}
-
-// contentSecurityPolicy restricts resources and framing while permitting scripts bearing the request's nonce.
-func contentSecurityPolicy(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
-		nonce := httpx.CSPNonce(request.Context())
-		responseWriter.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'nonce-"+nonce+"'; style-src 'self'; img-src 'self' data:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'")
-		responseWriter.Header().Set("X-Frame-Options", "SAMEORIGIN")
-		next.ServeHTTP(responseWriter, request)
-	})
-}
-
-func cspNonce(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
-		nonceBytes := make([]byte, 16)
-		if _, err := rand.Read(nonceBytes); err != nil {
-			http.Error(responseWriter, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-		nonce := base64.StdEncoding.EncodeToString(nonceBytes)
-		request = request.WithContext(httpx.WithCSPNonce(request.Context(), nonce))
-		next.ServeHTTP(responseWriter, request)
-	})
 }
 
 func recoverPanics(logger *logging.Logger, renderer *templates.Renderer) middleware {
