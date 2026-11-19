@@ -10,9 +10,9 @@ import (
 	"github.com/bootdotdev/learn-web-security/internal/templates"
 )
 
-// TestContentSecurityPolicy checks that the policy permits the request nonce and forwards responses.
+// TestContentSecurityPolicy checks security headers, the request nonce, and response forwarding.
 func TestContentSecurityPolicy(t *testing.T) {
-	const want = "default-src 'self'; script-src 'self' 'nonce-dGVzdC1ub25jZQ=='; style-src 'self'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+	const want = "default-src 'self'; script-src 'self' 'nonce-dGVzdC1ub25jZQ=='; style-src 'self'; img-src 'self' data:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
 	handler := contentSecurityPolicy(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -22,6 +22,9 @@ func TestContentSecurityPolicy(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if got := response.Result().Header.Get("Content-Security-Policy"); got != want {
 		t.Errorf("Content-Security-Policy = %q; want %q", got, want)
+	}
+	if got := response.Result().Header.Get("X-Frame-Options"); got != "SAMEORIGIN" {
+		t.Errorf("X-Frame-Options = %q; want %q", got, "SAMEORIGIN")
 	}
 	if response.Code != http.StatusNoContent {
 		t.Errorf("status = %d; want %d", response.Code, http.StatusNoContent)

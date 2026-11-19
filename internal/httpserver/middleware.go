@@ -85,11 +85,12 @@ func permissiveCORS(next http.Handler) http.Handler {
 	})
 }
 
-// contentSecurityPolicy restricts resources and permits scripts bearing the request's nonce.
+// contentSecurityPolicy restricts resources and framing while permitting scripts bearing the request's nonce.
 func contentSecurityPolicy(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		nonce := httpx.CSPNonce(request.Context())
-		responseWriter.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'nonce-"+nonce+"'; style-src 'self'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'")
+		responseWriter.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'nonce-"+nonce+"'; style-src 'self'; img-src 'self' data:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'")
+		responseWriter.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		next.ServeHTTP(responseWriter, request)
 	})
 }
