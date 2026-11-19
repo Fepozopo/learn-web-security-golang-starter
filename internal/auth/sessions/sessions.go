@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"net/url"
 	"time"
@@ -37,8 +38,13 @@ func RequireWithReturnTo(responseWriter http.ResponseWriter, request *http.Reque
 	return accounts.CurrentSession{}, false, nil
 }
 
-func CSRFTokensMatch(_, _ string) bool {
-	return true
+// CSRFTokensMatch reports whether expected and actual contain the same token bytes.
+// Equal-length tokens are compared in constant time.
+func CSRFTokensMatch(expected, actual string) bool {
+	if len(expected) != len(actual) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(actual)) == 1
 }
 
 func HasRecentAuthentication(current accounts.CurrentSession, now time.Time) bool {
