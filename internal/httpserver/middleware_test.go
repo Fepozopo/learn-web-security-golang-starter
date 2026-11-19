@@ -9,6 +9,22 @@ import (
 	"github.com/bootdotdev/learn-web-security/internal/templates"
 )
 
+// TestContentSecurityPolicy checks the policy on responses from the next handler.
+func TestContentSecurityPolicy(t *testing.T) {
+	const want = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+	handler := contentSecurityPolicy(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if got := response.Result().Header.Get("Content-Security-Policy"); got != want {
+		t.Errorf("Content-Security-Policy = %q; want %q", got, want)
+	}
+	if response.Code != http.StatusNoContent {
+		t.Errorf("status = %d; want %d", response.Code, http.StatusNoContent)
+	}
+}
+
 // TestValidateSource checks source validation and whether the next handler runs.
 func TestValidateSource(t *testing.T) {
 	renderer, err := templates.Load("../../web/templates")
