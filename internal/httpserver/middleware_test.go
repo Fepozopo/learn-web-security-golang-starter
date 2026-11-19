@@ -6,17 +6,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bootdotdev/learn-web-security/internal/httpx"
 	"github.com/bootdotdev/learn-web-security/internal/templates"
 )
 
-// TestContentSecurityPolicy checks the policy on responses from the next handler.
+// TestContentSecurityPolicy checks that the policy permits the request nonce and forwards responses.
 func TestContentSecurityPolicy(t *testing.T) {
-	const want = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+	const want = "default-src 'self'; script-src 'self' 'nonce-dGVzdC1ub25jZQ=='; style-src 'self'; img-src 'self' data:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
 	handler := contentSecurityPolicy(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request = request.WithContext(httpx.WithCSPNonce(request.Context(), "dGVzdC1ub25jZQ=="))
+	handler.ServeHTTP(response, request)
 	if got := response.Result().Header.Get("Content-Security-Policy"); got != want {
 		t.Errorf("Content-Security-Policy = %q; want %q", got, want)
 	}
