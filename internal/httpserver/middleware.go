@@ -30,10 +30,11 @@ func applyMiddleware(handler http.Handler, middlewareChain ...middleware) http.H
 	return handler
 }
 
-// contentTypeOptions prevents browsers from MIME-sniffing responses served by the application.
-func contentTypeOptions(next http.Handler) http.Handler {
+// securityHeaders prevents MIME sniffing and limits cross-origin referrer information.
+func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 		responseWriter.Header().Set("X-Content-Type-Options", "nosniff")
+		responseWriter.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		next.ServeHTTP(responseWriter, request)
 	})
 }

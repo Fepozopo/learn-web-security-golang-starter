@@ -10,6 +10,28 @@ import (
 	"github.com/bootdotdev/learn-web-security/internal/templates"
 )
 
+// TestSecurityHeaders checks the global headers on successful and error responses.
+func TestSecurityHeaders(t *testing.T) {
+	for _, status := range []int{http.StatusNoContent, http.StatusForbidden, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			handler := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+			}))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+			if got := response.Result().Header.Get("Referrer-Policy"); got != "strict-origin-when-cross-origin" {
+				t.Errorf("status %d: Referrer-Policy = %q; want %q", status, got, "strict-origin-when-cross-origin")
+			}
+			if got := response.Result().Header.Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Errorf("status %d: X-Content-Type-Options = %q; want %q", status, got, "nosniff")
+			}
+			if response.Code != status {
+				t.Errorf("status = %d; want %d", response.Code, status)
+			}
+		})
+	}
+}
+
 // TestContentSecurityPolicy checks security headers, the request nonce, and response forwarding.
 func TestContentSecurityPolicy(t *testing.T) {
 	const want = "default-src 'self'; script-src 'self' 'nonce-dGVzdC1ub25jZQ=='; style-src 'self'; img-src 'self' data:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
