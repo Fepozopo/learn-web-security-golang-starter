@@ -11,6 +11,24 @@ import (
 	"github.com/bootdotdev/learn-web-security/internal/storefront"
 )
 
+// productResponse contains the product fields exposed to public API clients.
+type productResponse struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	ImagePath   string `json:"image_path"`
+	PriceCents  int64  `json:"price_cents"`
+}
+
+// orderResponse contains the order fields exposed to its customer.
+type orderResponse struct {
+	ID         int64  `json:"id"`
+	Status     string `json:"status"`
+	TotalCents int64  `json:"total_cents"`
+	CreatedAt  string `json:"created_at"`
+}
+
+// integrationOrderResponse contains the fields exposed to warehouse clients.
 type integrationOrderResponse struct {
 	ID         int64  `json:"id"`
 	Status     string `json:"status"`
@@ -18,6 +36,7 @@ type integrationOrderResponse struct {
 	CreatedAt  string `json:"created_at"`
 }
 
+// orderItemResponse contains the item fields exposed to an order's customer.
 type orderItemResponse struct {
 	ProductID   int64  `json:"product_id"`
 	ProductName string `json:"product_name"`
@@ -41,6 +60,7 @@ func NewHandler(accountStore *accounts.Store, orderStore *orders.Store, productS
 	}
 }
 
+// AccountOrders returns the authenticated customer's orders.
 func (handler *Handler) AccountOrders(responseWriter http.ResponseWriter, request *http.Request) {
 	current, ok := handler.requireAuthentication(responseWriter, request)
 	if !ok {
@@ -51,7 +71,11 @@ func (handler *Handler) AccountOrders(responseWriter http.ResponseWriter, reques
 		handler.internalError(responseWriter, request, err)
 		return
 	}
-	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"orders": orders})
+	responses := make([]orderResponse, 0, len(orders))
+	for _, order := range orders {
+		responses = append(responses, publicOrder(order))
+	}
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"orders": responses})
 }
 
 // Order returns an authenticated user's order and its items, or a 404 if it is unavailable to them.
@@ -83,16 +107,29 @@ func (handler *Handler) Order(responseWriter http.ResponseWriter, request *http.
 	for _, item := range items {
 		itemResponses = append(itemResponses, orderItemResponse{ProductID: item.ProductID, ProductName: item.ProductName, Quantity: item.Quantity, PriceCents: item.PriceCents})
 	}
-	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"order": order, "items": itemResponses})
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"order": publicOrder(order), "items": itemResponses})
 }
 
+// Products returns the active products available to public API clients.
 func (handler *Handler) Products(responseWriter http.ResponseWriter, request *http.Request) {
-	products, err := handler.productStore.ListAllProducts(request.Context())
+	products, err := handler.productStore.ListProducts(request.Context(), handler.maxProductResults)
 	if err != nil {
 		handler.internalError(responseWriter, request, err)
 		return
 	}
-	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"products": products})
+	responses := make([]productResponse, 0, len(products))
+	for _, product := range products {
+		responses = append(responses, productResponse{
+			ID: product.ID, Name: product.Name, Description: product.Description,
+			ImagePath: product.ImagePath, PriceCents: product.PriceCents,
+		})
+	}
+	httpx.RespondWithJSON(responseWriter, http.StatusOK, map[string]any{"products": responses})
+}
+
+// publicOrder selects the customer-visible fields from a stored order.
+func publicOrder(order orders.Order) orderResponse {
+	return orderResponse{ID: order.ID, Status: order.Status, TotalCents: order.TotalCents, CreatedAt: order.CreatedAt}
 }
 
 // WarehouseOrders returns warehouse orders to clients with an active orders:read API key.
