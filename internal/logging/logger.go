@@ -3,7 +3,7 @@ package logging
 import (
 	"encoding/json"
 	"fmt"
-	"maps"
+
 	"os"
 	"path/filepath"
 	"sync"
@@ -31,12 +31,21 @@ func (logger *Logger) Close() error {
 	return logger.file.Close()
 }
 
+// Event writes a structured event, redacting sensitive top-level fields.
+// It returns an error if the record cannot be encoded or written.
 func (logger *Logger) Event(eventName string, fields map[string]any) error {
 	record := map[string]any{
 		"timestamp": logger.now().UTC().Format("2006-01-02T15:04:05.000Z"),
 		"event":     eventName,
 	}
-	maps.Copy(record, fields)
+	for key, value := range fields {
+		switch key {
+		case "sessionId", "resetToken", "resetLink", "secret", "adminNotes", "storagePath":
+			record[key] = "[REDACTED]"
+		default:
+			record[key] = value
+		}
+	}
 
 	logger.mutex.Lock()
 	defer logger.mutex.Unlock()
