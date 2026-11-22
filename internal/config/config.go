@@ -50,7 +50,13 @@ func LoadAttackerLab(workingDirectory string) (AttackerLabConfig, error) {
 	return ParseAttackerLab(processEnvironment())
 }
 
+// Parse validates environment values and returns the server configuration for workingDirectory.
 func Parse(environment map[string]string, workingDirectory string) (Config, error) {
+	pawPalAPIKey, err := requiredValue(environment, "PAWPAL_API_KEY")
+	if err != nil {
+		return Config{}, err
+	}
+
 	port, err := parseNonNegativeInteger(valueOrDefault(environment, "PORT", strconv.Itoa(defaultPort)), "PORT")
 	if err != nil {
 		return Config{}, err
@@ -79,7 +85,7 @@ func Parse(environment map[string]string, workingDirectory string) (Config, erro
 	}
 
 	return Config{
-		PawPalAPIKey:               "bs_test_pawpal_starter_key",
+		PawPalAPIKey:               pawPalAPIKey,
 		AppOrigin:                  appOrigin,
 		Port:                       port,
 		DatabasePath:               databasePath,
@@ -112,6 +118,15 @@ func processEnvironment() map[string]string {
 		}
 	}
 	return environment
+}
+
+// requiredValue returns the named environment value or an error if it is empty.
+func requiredValue(environment map[string]string, name string) (string, error) {
+	value := environment[name]
+	if value == "" {
+		return "", fmt.Errorf("missing required environment variable: %s", name)
+	}
+	return value, nil
 }
 
 func valueOrDefault(environment map[string]string, name, fallback string) string {
