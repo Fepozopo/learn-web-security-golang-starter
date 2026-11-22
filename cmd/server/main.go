@@ -26,6 +26,7 @@ func main() {
 	}
 }
 
+// run loads configuration and serves requests until the context is cancelled or the server fails.
 func run(ctx context.Context) error {
 	workingDirectory, err := os.Getwd()
 	if err != nil {
@@ -56,6 +57,7 @@ func run(ctx context.Context) error {
 		MaxRequestBodyBytes:     appConfig.MaxRequestBodyBytes,
 		MaxUploadBytes:          appConfig.MaxUploadBytes,
 		PawPalAPIKey:            appConfig.PawPalAPIKey,
+		DownloadSigningKey:      appConfig.DownloadSigningKey,
 		AcornFulfillmentDelay:   appConfig.AcornFulfillmentDelay,
 		DataDirectory:           filepath.Join(workingDirectory, "data"),
 		FixtureDirectory:        filepath.Join(workingDirectory, "data", "fixtures"),

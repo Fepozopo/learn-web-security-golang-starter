@@ -2,7 +2,7 @@ package httpserver
 
 import (
 	"context"
-	"crypto/rand"
+
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -38,12 +38,14 @@ const (
 	unboundedPublicProductResults = -1
 )
 
+// Options supplies configuration and dependencies for the HTTP application.
 type Options struct {
 	AppOrigin               string
 	MaxPublicProductResults int
 	MaxRequestBodyBytes     int64
 	MaxUploadBytes          int64
 	PawPalAPIKey            string
+	DownloadSigningKey      [32]byte
 	AcornFulfillmentDelay   time.Duration
 	EncryptionKeyring       *storage.Keyring
 	DataDirectory           string
@@ -57,6 +59,7 @@ type Application struct {
 	publicRoot *os.Root
 }
 
+// New builds the HTTP application using the database, logger, and supplied options.
 func New(database *sql.DB, logger *logging.Logger, options Options) (*Application, error) {
 	if options.DataDirectory == "" {
 		return nil, fmt.Errorf("data directory is required")
@@ -100,10 +103,7 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 		logger,
 		unboundedPublicProductResults,
 	)
-	var downloadSigningKey [32]byte
-	if _, err := rand.Read(downloadSigningKey[:]); err != nil {
-		return nil, fmt.Errorf("generate download signing key: %w", err)
-	}
+
 	uploadHandler := uploads.NewHandler(
 		accountStore,
 		uploadStore,
@@ -112,7 +112,7 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 		options.EncryptionKeyring,
 		uploadDirectory,
 		defaultUploadBytes,
-		downloadSigningKey,
+		options.DownloadSigningKey,
 	)
 	adminHandler := admin.NewHandler(admin.NewStore(database), accountStore, renderer, logger, imagepreview.NewService(), options.MaxUploadBytes)
 	apiHandler := api.NewHandler(accountStore, orderStore, productStore, api.NewStore(database), logger, unboundedPublicProductResults)

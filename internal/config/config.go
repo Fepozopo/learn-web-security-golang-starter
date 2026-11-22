@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 const (
@@ -25,6 +27,7 @@ const (
 	encryptionKeyEnvPrefix     = "DATA_ENCRYPTION_KEY_"
 )
 
+// Config holds the validated server settings and secret keys.
 type Config struct {
 	PawPalAPIKey               string
 	AppOrigin                  string
@@ -36,23 +39,43 @@ type Config struct {
 	MaxPublicProductResults    int
 	ActiveEncryptionKeyVersion string
 	EncryptionKeys             map[string][32]byte
+	DownloadSigningKey         [32]byte
 }
 
 type AttackerLabConfig struct {
 	Port int
 }
 
+// Load reads local and process environment values and validates the server configuration.
 func Load(workingDirectory string) (Config, error) {
-	return Parse(processEnvironment(), workingDirectory)
+	environment, err := loadEnvironment(workingDirectory)
+	if err != nil {
+		return Config{}, err
+	}
+	return Parse(environment, workingDirectory)
 }
 
+// LoadAttackerLab reads local and process environment values and validates the lab configuration.
 func LoadAttackerLab(workingDirectory string) (AttackerLabConfig, error) {
-	return ParseAttackerLab(processEnvironment())
+	environment, err := loadEnvironment(workingDirectory)
+	if err != nil {
+		return AttackerLabConfig{}, err
+	}
+	return ParseAttackerLab(environment)
 }
 
 // Parse validates environment values and returns the server configuration for workingDirectory.
 func Parse(environment map[string]string, workingDirectory string) (Config, error) {
 	pawPalAPIKey, err := requiredValue(environment, "PAWPAL_API_KEY")
+	if err != nil {
+		return Config{}, err
+	}
+
+	signingKeyValue, err := requiredValue(environment, "DOWNLOAD_SIGNING_KEY")
+	if err != nil {
+		return Config{}, err
+	}
+	downloadSigningKey, err := parseEncryptionKey(signingKeyValue, "DOWNLOAD_SIGNING_KEY")
 	if err != nil {
 		return Config{}, err
 	}
@@ -95,6 +118,7 @@ func Parse(environment map[string]string, workingDirectory string) (Config, erro
 		MaxPublicProductResults:    MaxPublicProductResults,
 		ActiveEncryptionKeyVersion: activeEncryptionKeyVersion,
 		EncryptionKeys:             encryptionKeys,
+		DownloadSigningKey:         downloadSigningKey,
 	}, nil
 }
 
@@ -109,15 +133,22 @@ func ParseAttackerLab(environment map[string]string) (AttackerLabConfig, error) 
 	return AttackerLabConfig{Port: port}, nil
 }
 
-func processEnvironment() map[string]string {
-	environment := make(map[string]string)
+// loadEnvironment reads .env without modifying the process and gives process variables precedence.
+func loadEnvironment(workingDirectory string) (map[string]string, error) {
+	// godotenv.Read parses the local file into a map rather than changing process-wide state.
+	environment, err := godotenv.Read(filepath.Join(workingDirectory, ".env"))
+	if errors.Is(err, os.ErrNotExist) {
+		environment = make(map[string]string)
+	} else if err != nil {
+		return nil, fmt.Errorf("read .env: %w", err)
+	}
 	for _, entry := range os.Environ() {
 		name, value, found := strings.Cut(entry, "=")
 		if found {
 			environment[name] = value
 		}
 	}
-	return environment
+	return environment, nil
 }
 
 // requiredValue returns the named environment value or an error if it is empty.
@@ -212,6 +243,7 @@ func parseEncryptionKeys(environment map[string]string) (string, map[string][32]
 	return activeVersion, keys, nil
 }
 
+// parseEncryptionKey decodes a named 32-byte hexadecimal key or reports an invalid value.
 func parseEncryptionKey(value, name string) ([32]byte, error) {
 	decoded, err := hex.DecodeString(value)
 	if err != nil || len(decoded) != 32 {
