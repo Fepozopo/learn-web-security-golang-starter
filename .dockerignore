@@ -1,0 +1,29 @@
+# Environment files and local repository metadata
+.env*
+**/.env
+**/.env.*
+.git/
+.codebase-memory
+
+# Temporary files, logs, and local databases
+tmp/
+**/tmp/
+**/temp/
+**/*.tmp
+**/*.temp
+**/*.swp
+**/*~
+*.log
+**/*.log
+**/*.db
+**/*.db-*
+data/*.sqlite*
+**/*.sqlite
+**/*.sqlite-*
+**/*.sqlite3
+**/*.sqlite3-*
+
+# Generated documents and runtime uploads
+data/bulk-tax-documents/
+data/uploads/*
+!data/uploads/mystery-shack-tax-exemption.pdf
