@@ -16,6 +16,7 @@ import (
 	"github.com/bootdotdev/learn-web-security/internal/database"
 	"github.com/bootdotdev/learn-web-security/internal/httpserver"
 	"github.com/bootdotdev/learn-web-security/internal/logging"
+	"github.com/bootdotdev/learn-web-security/internal/storage"
 )
 
 func main() {
@@ -35,6 +36,11 @@ func run(ctx context.Context) error {
 	appConfig, err := config.Load(workingDirectory)
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
+	}
+
+	keyring, err := storage.NewKeyring(appConfig.ActiveEncryptionKeyVersion, appConfig.EncryptionKeys)
+	if err != nil {
+		return fmt.Errorf("configure encryption keyring: %w", err)
 	}
 
 	databaseConnection, err := database.Open(ctx, appConfig.DatabasePath)
@@ -59,6 +65,7 @@ func run(ctx context.Context) error {
 		MaxUploadBytes:          appConfig.MaxUploadBytes,
 		PawPalAPIKey:            appConfig.PawPalAPIKey,
 		DownloadSigningKey:      appConfig.DownloadSigningKey,
+		EncryptionKeyring:       keyring,
 		AcornFulfillmentDelay:   appConfig.AcornFulfillmentDelay,
 		DataDirectory:           filepath.Join(workingDirectory, "data"),
 		FixtureDirectory:        filepath.Join(workingDirectory, "data", "fixtures"),

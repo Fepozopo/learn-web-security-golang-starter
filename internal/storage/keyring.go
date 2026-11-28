@@ -1,14 +1,11 @@
-//lint:file-ignore U1000 Some code in this file is used later
-
 package storage
 
 import (
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+
 	"regexp"
 	"strings"
 )
@@ -18,7 +15,6 @@ var keyVersionPattern = regexp.MustCompile(`^[a-z0-9]+(?:_[a-z0-9]+)*$`)
 type Keyring struct {
 	activeVersion string
 	keys          map[string][32]byte
-	randomSource  io.Reader
 }
 
 type versionedEncryptedPayload struct {
@@ -54,19 +50,58 @@ func NewKeyring(activeVersion string, keys map[string][32]byte) (*Keyring, error
 	if _, exists := keyCopies[activeVersion]; !exists {
 		return nil, fmt.Errorf("no encryption key configured for active version: %s", activeVersion)
 	}
-	return &Keyring{activeVersion: activeVersion, keys: keyCopies, randomSource: rand.Reader}, nil
+	return &Keyring{activeVersion: activeVersion, keys: keyCopies}, nil
 }
 
 func (keyring *Keyring) ActiveVersion() string {
 	return keyring.activeVersion
 }
 
+// Encrypt protects plaintext with the active key and returns a versioned serialized payload.
 func (keyring *Keyring) Encrypt(plaintext []byte) (string, error) {
-	return string(plaintext), nil
+	keyring, err := requireKeyring(keyring)
+	if err != nil {
+		return "", err
+	}
+	key, ok := keyring.keys[keyring.activeVersion]
+	if !ok {
+		return "", fmt.Errorf("no encryption key configured for active version: %s", keyring.activeVersion)
+	}
+	payload, err := Encrypt(plaintext, key)
+	if err != nil {
+		return "", fmt.Errorf("encrypt payload: %w", err)
+	}
+	return serializeEncryptedPayload(versionedEncryptedPayload{
+		KeyVersion: keyring.activeVersion,
+		Nonce:      payload.Nonce,
+		AuthTag:    payload.AuthTag,
+		Ciphertext: payload.Ciphertext,
+	})
 }
 
+// Decrypt reads a versioned payload and returns its authenticated plaintext using the recorded key.
 func (keyring *Keyring) Decrypt(serialized string) ([]byte, error) {
-	return []byte(serialized), nil
+	keyring, err := requireKeyring(keyring)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := deserializeEncryptedPayload(serialized)
+	if err != nil {
+		return nil, err
+	}
+	key, ok := keyring.keys[payload.KeyVersion]
+	if !ok {
+		return nil, fmt.Errorf("no encryption key configured for version: %s", payload.KeyVersion)
+	}
+	plaintext, err := Decrypt(EncryptedPayload{
+		Nonce:      payload.Nonce,
+		AuthTag:    payload.AuthTag,
+		Ciphertext: payload.Ciphertext,
+	}, key)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt payload: %w", err)
+	}
+	return plaintext, nil
 }
 
 func requireKeyring(keyring *Keyring) (*Keyring, error) {
