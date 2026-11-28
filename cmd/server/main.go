@@ -53,6 +53,7 @@ func run(ctx context.Context) error {
 	defer appLogger.Close()
 	application, err := httpserver.New(databaseConnection, appLogger, httpserver.Options{
 		AppOrigin:               appConfig.AppOrigin,
+		TrustedProxyHops:        appConfig.TrustedProxyHops,
 		MaxPublicProductResults: appConfig.MaxPublicProductResults,
 		MaxRequestBodyBytes:     appConfig.MaxRequestBodyBytes,
 		MaxUploadBytes:          appConfig.MaxUploadBytes,

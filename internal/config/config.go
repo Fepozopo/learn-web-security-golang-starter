@@ -32,6 +32,7 @@ type Config struct {
 	PawPalAPIKey               string
 	AppOrigin                  string
 	Port                       int
+	TrustedProxyHops           int
 	DatabasePath               string
 	AcornFulfillmentDelay      time.Duration
 	MaxRequestBodyBytes        int64
@@ -87,6 +88,10 @@ func Parse(environment map[string]string, workingDirectory string) (Config, erro
 	if port > 65_535 {
 		return Config{}, errors.New("PORT must be no greater than 65535")
 	}
+	trustedProxyHops, err := parseNonNegativeInteger(valueOrDefault(environment, "TRUST_PROXY_HOPS", "0"), "TRUST_PROXY_HOPS")
+	if err != nil {
+		return Config{}, err
+	}
 	appOrigin, err := parseOrigin(valueOrDefault(environment, "APP_ORIGIN", defaultAppOrigin))
 	if err != nil {
 		return Config{}, err
@@ -111,6 +116,7 @@ func Parse(environment map[string]string, workingDirectory string) (Config, erro
 		PawPalAPIKey:               pawPalAPIKey,
 		AppOrigin:                  appOrigin,
 		Port:                       port,
+		TrustedProxyHops:           trustedProxyHops,
 		DatabasePath:               databasePath,
 		AcornFulfillmentDelay:      acornFulfillmentDelay,
 		MaxRequestBodyBytes:        MaxRequestBodyBytes,

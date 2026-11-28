@@ -39,6 +39,43 @@ func TestParsePawPalAPIKey(t *testing.T) {
 	}
 }
 
+// TestParseTrustedProxyHops verifies the default, valid hop counts, and invalid values.
+func TestParseTrustedProxyHops(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		want    int
+		invalid bool
+	}{
+		{name: "default", value: "", want: 0},
+		{name: "zero", value: "0", want: 0},
+		{name: "one proxy", value: "1", want: 1},
+		{name: "multiple proxies", value: "2", want: 2},
+		{name: "negative", value: "-1", invalid: true},
+		{name: "not an integer", value: "1.5", invalid: true},
+		{name: "overflow", value: "999999999999999999999999999999999", invalid: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			environment := map[string]string{
+				"PAWPAL_API_KEY":       "test",
+				"DOWNLOAD_SIGNING_KEY": strings.Repeat("ab", 32),
+				"TRUST_PROXY_HOPS":     tt.value,
+			}
+			got, err := Parse(environment, t.TempDir())
+			if tt.invalid {
+				if err == nil || !strings.Contains(err.Error(), "TRUST_PROXY_HOPS") {
+					t.Fatalf("Parse TRUST_PROXY_HOPS=%q: got error %v, want TRUST_PROXY_HOPS validation error", tt.value, err)
+				}
+				return
+			}
+			if err != nil || got.TrustedProxyHops != tt.want {
+				t.Fatalf("Parse TRUST_PROXY_HOPS=%q: got hops %d, error %v; want %d, nil", tt.value, got.TrustedProxyHops, err, tt.want)
+			}
+		})
+	}
+}
+
 // TestParseDownloadSigningKey checks the required key's format and decoded value.
 func TestParseDownloadSigningKey(t *testing.T) {
 	tests := []struct {
